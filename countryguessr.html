@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>CountryGuessr</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0f1e;
+  --surface: #0f1628;
+  --border: #1e2d4a;
+  --border2: #2a3f6a;
+  --accent: #4f8ef7;
+  --accent-dim: #1a2d5a;
+  --green: #22c55e;
+  --green-dim: #14532d;
+  --red: #ef4444;
+  --red-dim: #7f1d1d;
+  --yellow: #eab308;
+  --text: #e2e8f0;
+  --muted: #64748b;
+  --country-fill: #1e3a6e;
+  --country-stroke: #4f8ef7;
+  --capital-dot: #fbbf24;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { height: 100%; width: 100%; background: var(--bg); font-family: 'DM Sans', sans-serif; color: var(--text); overflow: hidden; -webkit-tap-highlight-color: transparent; }
+
+/* star field bg */
+body::before {
+  content: ''; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background:
+    radial-gradient(1px 1px at 20% 30%, rgba(255,255,255,.15) 0%, transparent 100%),
+    radial-gradient(1px 1px at 60% 10%, rgba(255,255,255,.12) 0%, transparent 100%),
+    radial-gradient(1px 1px at 80% 70%, rgba(255,255,255,.1) 0%, transparent 100%),
+    radial-gradient(1px 1px at 40% 85%, rgba(255,255,255,.08) 0%, transparent 100%),
+    radial-gradient(1px 1px at 10% 60%, rgba(255,255,255,.12) 0%, transparent 100%),
+    radial-gradient(1px 1px at 90% 40%, rgba(255,255,255,.1) 0%, transparent 100%),
+    radial-gradient(2px 2px at 50% 50%, rgba(79,142,247,.08) 0%, transparent 100%);
+}
+
+.app { display: flex; flex-direction: column; height: 100%; position: relative; z-index: 1; }
+
+/* HEADER */
+header {
+  flex-shrink: 0; height: 52px; background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: space-between; padding: 0 16px;
+}
+.logo { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 800; color: var(--accent); letter-spacing: -0.5px; }
+.logo span { color: var(--text); font-weight: 400; }
+.hud { display: flex; align-items: center; gap: 16px; }
+.hud-block { text-align: right; }
+.hud-lbl { font-family: 'JetBrains Mono', monospace; font-size: 8px; letter-spacing: 2px; color: var(--muted); text-transform: uppercase; }
+.hud-val { font-family: 'Syne', sans-serif; font-size: 20px; font-weight: 700; color: var(--accent); line-height: 1; }
+.pips { display: flex; gap: 5px; }
+.pip { width: 8px; height: 8px; border-radius: 2px; background: var(--border); border: 1px solid var(--border2); transition: all .3s; }
+.pip.done { background: var(--accent-dim); border-color: var(--accent); }
+.pip.cur  { background: var(--accent); border-color: var(--accent); box-shadow: 0 0 6px var(--accent); }
+
+/* CONTROLS */
+#controls {
+  flex-shrink: 0; background: var(--surface); border-bottom: 1px solid var(--border);
+  padding: 8px 16px; display: flex; align-items: center; gap: 8px;
+}
+.diff-group { display: flex; border: 1px solid var(--border); border-radius: 4px; overflow: hidden; }
+.diff-btn {
+  padding: 6px 14px; font-family: 'JetBrains Mono', monospace; font-size: 10px;
+  letter-spacing: 1px; text-transform: uppercase;
+  background: var(--bg); border: none; cursor: pointer; color: var(--muted); transition: all .15s;
+  border-right: 1px solid var(--border);
+}
+.diff-btn:last-child { border-right: none; }
+.diff-btn.active { background: var(--accent); color: var(--bg); }
+
+.streak-badge {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted);
+}
+#streak-count { color: var(--yellow); font-weight: 600; font-size: 14px; }
+#streak-fire { font-size: 16px; display: none; }
+#streak-fire.show { display: inline; }
+
+/* OUTLINE PANEL */
+#outline-panel {
+  flex-shrink: 0; position: relative;
+  background: var(--bg); border-bottom: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center;
+  height: 260px;
+}
+#outline-svg { width: 100%; height: 100%; }
+#outline-loading {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  flex-direction: column; gap: 10px;
+}
+#outline-loading.hidden { display: none; }
+.globe-spin {
+  width: 40px; height: 40px; border: 2px solid var(--border);
+  border-top-color: var(--accent); border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+#outline-loading p { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); letter-spacing: 1px; }
+
+/* Round / difficulty label */
+#outline-label {
+  position: absolute; top: 10px; left: 12px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+#hint-label {
+  position: absolute; bottom: 10px; right: 12px;
+  font-family: 'JetBrains Mono', monospace; font-size: 10px; color: var(--muted); letter-spacing: 1px;
+}
+
+/* ANSWER AREA */
+#answer-area { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+
+/* MULTIPLE CHOICE */
+#mc-grid {
+  flex: 1; display: grid; grid-template-columns: 1fr 1fr;
+  gap: 8px; padding: 14px 16px; overflow-y: auto;
+}
+.mc-btn {
+  padding: 12px 10px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--surface);
+  color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 14px;
+  cursor: pointer; transition: all .15s; text-align: center; line-height: 1.3;
+}
+.mc-btn:hover { border-color: var(--accent); background: var(--accent-dim); color: var(--accent); }
+.mc-btn.correct { background: rgba(34,197,94,.15); border-color: var(--green); color: var(--green); }
+.mc-btn.wrong   { background: rgba(239,68,68,.1);  border-color: var(--red);   color: var(--red); opacity: .6; }
+.mc-btn:disabled { cursor: not-allowed; }
+
+/* SEARCH MODE */
+#search-mode {
+  flex: 1; display: flex; flex-direction: column; padding: 14px 16px; gap: 10px; overflow: hidden;
+}
+#country-search {
+  width: 100%; background: var(--surface); border: 1px solid var(--border);
+  color: var(--text); font-family: 'JetBrains Mono', monospace; font-size: 13px;
+  padding: 11px 14px; border-radius: 6px; outline: none; transition: border-color .2s;
+}
+#country-search::placeholder { color: var(--muted); }
+#country-search:focus { border-color: var(--accent); }
+#search-results { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 5px; }
+.search-btn {
+  padding: 10px 14px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text); font-size: 14px;
+  cursor: pointer; text-align: left; transition: all .15s;
+}
+.search-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+.search-btn.correct { background: rgba(34,197,94,.15); border-color: var(--green); color: var(--green); }
+.search-btn.wrong   { background: rgba(239,68,68,.1);  border-color: var(--red);   color: var(--red); }
+.search-btn:disabled { cursor: not-allowed; }
+
+/* RESULT OVERLAY */
+#result-overlay {
+  display: none; position: fixed; inset: 0; z-index: 200;
+  background: rgba(10,15,30,.96); flex-direction: column;
+  align-items: center; justify-content: center; padding: 20px; gap: 16px;
+}
+#result-overlay.show { display: flex; }
+#result-outline {
+  width: 200px; height: 140px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+}
+.rcard {
+  width: 100%; max-width: 380px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 22px; text-align: center;
+}
+.r-country { font-family: 'Syne', sans-serif; font-size: 26px; font-weight: 700; color: var(--text); margin-bottom: 4px; }
+.r-region  { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
+.r-outcome { font-family: 'JetBrains Mono', monospace; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; margin-bottom: 10px; }
+.r-outcome.correct { color: var(--green); }
+.r-outcome.wrong   { color: var(--red); }
+.r-score { font-family: 'Syne', sans-serif; font-size: 64px; font-weight: 800; color: var(--accent); line-height: 1; }
+.r-score-lbl { font-size: 12px; color: var(--muted); margin-bottom: 6px; font-family: 'JetBrains Mono', monospace; }
+.r-streak { font-size: 13px; color: var(--yellow); margin-bottom: 16px; }
+.btn-next {
+  width: 100%; background: var(--accent); color: var(--bg);
+  font-family: 'Syne', sans-serif; font-size: 16px; font-weight: 700; letter-spacing: 1px;
+  border: none; padding: 13px; border-radius: 6px; cursor: pointer;
+}
+.btn-next:active { opacity: .85; }
+
+/* FINAL */
+#final-overlay {
+  display: none; position: fixed; inset: 0; z-index: 300;
+  background: rgba(10,15,30,.98); flex-direction: column;
+  align-items: center; justify-content: center; padding: 20px; gap: 14px;
+}
+#final-overlay.show { display: flex; }
+.fcard {
+  width: 100%; max-width: 380px; background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px; padding: 28px; text-align: center;
+}
+.f-title { font-family: 'JetBrains Mono', monospace; font-size: 9px; letter-spacing: 3px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; }
+.f-score { font-family: 'Syne', sans-serif; font-size: 84px; font-weight: 800; color: var(--accent); line-height: 1; }
+.f-max { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+.f-streak { font-size: 13px; color: var(--yellow); margin-bottom: 12px; }
+.f-grade { font-size: 13px; padding: 4px 16px; border-radius: 20px; display: inline-block; margin-bottom: 20px; font-family: 'JetBrains Mono', monospace; }
+.fg-s { background: rgba(34,197,94,.12); color: var(--green); border: 1px solid var(--green-dim); }
+.fg-a { background: rgba(79,142,247,.12); color: var(--accent); border: 1px solid var(--accent-dim); }
+.fg-b { background: rgba(234,179,8,.12);  color: var(--yellow); border: 1px solid #713f12; }
+.fg-c { background: rgba(239,68,68,.1);   color: var(--red);    border: 1px solid var(--red-dim); }
+</style>
+</head>
+<body>
+<div class="app">
+
+<header>
+  <div class="logo">Country<span>Guessr</span></div>
+  <div class="hud">
+    <div class="pips" id="pips"></div>
+    <div class="hud-block">
+      <div class="hud-lbl">Score</div>
+      <div class="hud-val" id="hud-score">0</div>
+    </div>
+  </div>
+</header>
+
+<div id="controls">
+  <div class="diff-group">
+    <button class="diff-btn active" id="diff-easy"   onclick="setDiff('easy')">Easy</button>
+    <button class="diff-btn"        id="diff-medium" onclick="setDiff('medium')">Medium</button>
+    <button class="diff-btn"        id="diff-hard"   onclick="setDiff('hard')">Hard</button>
+  </div>
+  <div class="streak-badge">
+    <span id="streak-fire">🔥</span>
+    <span>Streak:</span>
+    <span id="streak-count">0</span>
+  </div>
+</div>
+
+<div id="outline-panel">
+  <div id="outline-loading">
+    <div class="globe-spin"></div>
+    <p>LOADING WORLD DATA…</p>
+  </div>
+  <svg id="outline-svg" viewBox="0 0 400 260"></svg>
+  <div id="outline-label">ROUND 1 / 5</div>
+  <div id="hint-label"></div>
+</div>
+
+<div id="answer-area">
+  <div id="mc-grid"></div>
+  <div id="search-mode" style="display:none">
+    <input type="text" id="country-search" placeholder="Type a country name…"
+      oninput="filterSearch(this.value)" autocomplete="off" autocorrect="off" spellcheck="false">
+    <div id="search-results"></div>
+  </div>
+</div>
+
+</div>
+
+<!-- RESULT -->
+<div id="result-overlay">
+  <svg id="result-outline" viewBox="0 0 400 260"></svg>
+  <div class="rcard">
+    <div class="r-country" id="r-country">—</div>
+    <div class="r-region"  id="r-region">—</div>
+    <div class="r-outcome" id="r-outcome">—</div>
+    <div class="r-score"   id="r-score">0</div>
+    <div class="r-score-lbl">points</div>
+    <div class="r-streak"  id="r-streak"></div>
+    <button class="btn-next" id="btn-next" onclick="nextRound()">Next Country →</button>
+  </div>
+</div>
+
+<!-- FINAL -->
+<div id="final-overlay">
+  <div class="fcard">
+    <div class="f-title">Mission Complete</div>
+    <div class="f-score" id="f-score">0</div>
+    <div class="f-max"   id="f-max"></div>
+    <div class="f-streak" id="f-streak"></div>
+    <div class="f-grade" id="f-grade"></div>
+    <button class="btn-next" onclick="location.reload()">↺ Play Again</button>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/topojson-client@3/dist/topojson-client.min.js"></script>
+<script>
+// ─────────────────────────────────────────────
+// COUNTRY DATA — ISO numeric → name + region + capital coords
+// ─────────────────────────────────────────────
+const COUNTRIES = {
+  4:  { name:'Afghanistan',       region:'Asia',          capital:[69.17,34.52] },
+  8:  { name:'Albania',           region:'Europe',        capital:[19.82,41.33] },
+  12: { name:'Algeria',           region:'Africa',        capital:[3.05,36.74] },
+  24: { name:'Angola',            region:'Africa',        capital:[13.23,-8.84] },
+  32: { name:'Argentina',         region:'South America', capital:[-58.40,-34.60] },
+  36: { name:'Australia',         region:'Oceania',       capital:[149.13,-35.28] },
+  40: { name:'Austria',           region:'Europe',        capital:[16.37,48.21] },
+  50: { name:'Bangladesh',        region:'Asia',          capital:[90.41,23.72] },
+  56: { name:'Belgium',           region:'Europe',        capital:[4.35,50.85] },
+  64: { name:'Bhutan',            region:'Asia',          capital:[89.64,27.47] },
+  68: { name:'Bolivia',           region:'South America', capital:[-68.15,-16.50] },
+  76: { name:'Brazil',            region:'South America', capital:[-47.93,-15.78] },
+  100:{ name:'Bulgaria',          region:'Europe',        capital:[23.32,42.70] },
+  116:{ name:'Cambodia',          region:'Asia',          capital:[104.92,11.57] },
+  120:{ name:'Cameroon',          region:'Africa',        capital:[11.52,3.87] },
+  124:{ name:'Canada',            region:'North America', capital:[-75.70,45.42] },
+  144:{ name:'Sri Lanka',         region:'Asia',          capital:[79.86,6.91] },
+  152:{ name:'Chile',             region:'South America', capital:[-70.67,-33.46] },
+  156:{ name:'China',             region:'Asia',          capital:[116.39,39.91] },
+  170:{ name:'Colombia',          region:'South America', capital:[-74.08,4.71] },
+  180:{ name:'DR Congo',          region:'Africa',        capital:[15.32,-4.32] },
+  192:{ name:'Cuba',              region:'Caribbean',     capital:[-82.38,23.13] },
+  203:{ name:'Czech Republic',    region:'Europe',        capital:[14.47,50.09] },
+  208:{ name:'Denmark',           region:'Europe',        capital:[12.57,55.68] },
+  214:{ name:'Dominican Republic',region:'Caribbean',     capital:[-69.90,18.48] },
+  218:{ name:'Ecuador',           region:'South America', capital:[-78.53,-0.23] },
+  818:{ name:'Egypt',             region:'Africa',        capital:[31.25,30.06] },
+  231:{ name:'Ethiopia',          region:'Africa',        capital:[38.70,9.03] },
+  246:{ name:'Finland',           region:'Europe',        capital:[25.00,60.17] },
+  250:{ name:'France',            region:'Europe',        capital:[2.35,48.86] },
+  276:{ name:'Germany',           region:'Europe',        capital:[13.40,52.52] },
+  288:{ name:'Ghana',             region:'Africa',        capital:[-0.20,5.56] },
+  300:{ name:'Greece',            region:'Europe',        capital:[23.73,37.97] },
+  320:{ name:'Guatemala',         region:'Central America',capital:[-90.52,14.64] },
+  332:{ name:'Haiti',             region:'Caribbean',     capital:[-72.34,18.55] },
+  340:{ name:'Honduras',          region:'Central America',capital:[-87.21,14.10] },
+  356:{ name:'India',             region:'Asia',          capital:[77.21,28.63] },
+  360:{ name:'Indonesia',         region:'Asia',          capital:[106.83,-6.19] },
+  364:{ name:'Iran',              region:'Asia',          capital:[51.42,35.70] },
+  368:{ name:'Iraq',              region:'Asia',          capital:[44.39,33.34] },
+  372:{ name:'Ireland',           region:'Europe',        capital:[-6.27,53.33] },
+  376:{ name:'Israel',            region:'Asia',          capital:[35.22,31.77] },
+  380:{ name:'Italy',             region:'Europe',        capital:[12.48,41.90] },
+  388:{ name:'Jamaica',           region:'Caribbean',     capital:[-76.79,17.99] },
+  392:{ name:'Japan',             region:'Asia',          capital:[139.75,35.69] },
+  400:{ name:'Jordan',            region:'Asia',          capital:[35.93,31.95] },
+  398:{ name:'Kazakhstan',        region:'Asia',          capital:[71.43,51.18] },
+  404:{ name:'Kenya',             region:'Africa',        capital:[36.82,-1.28] },
+  408:{ name:'North Korea',       region:'Asia',          capital:[125.75,39.02] },
+  410:{ name:'South Korea',       region:'Asia',          capital:[126.99,37.56] },
+  422:{ name:'Lebanon',           region:'Asia',          capital:[35.51,33.89] },
+  434:{ name:'Libya',             region:'Africa',        capital:[13.18,32.90] },
+  484:{ name:'Mexico',            region:'North America', capital:[-99.13,19.43] },
+  504:{ name:'Morocco',           region:'Africa',        capital:[-6.85,33.99] },
+  508:{ name:'Mozambique',        region:'Africa',        capital:[32.59,-25.97] },
+  524:{ name:'Nepal',             region:'Asia',          capital:[85.32,27.71] },
+  528:{ name:'Netherlands',       region:'Europe',        capital:[4.89,52.37] },
+  554:{ name:'New Zealand',       region:'Oceania',       capital:[174.78,-36.87] },
+  558:{ name:'Nicaragua',         region:'Central America',capital:[-86.29,12.13] },
+  566:{ name:'Nigeria',           region:'Africa',        capital:[7.53,9.07] },
+  578:{ name:'Norway',            region:'Europe',        capital:[10.74,59.91] },
+  586:{ name:'Pakistan',          region:'Asia',          capital:[73.05,33.72] },
+  591:{ name:'Panama',            region:'Central America',capital:[-79.52,8.99] },
+  604:{ name:'Peru',              region:'South America', capital:[-77.04,-12.04] },
+  608:{ name:'Philippines',       region:'Asia',          capital:[120.98,14.60] },
+  616:{ name:'Poland',            region:'Europe',        capital:[21.01,52.23] },
+  620:{ name:'Portugal',          region:'Europe',        capital:[-9.14,38.72] },
+  630:{ name:'Puerto Rico',       region:'Caribbean',     capital:[-66.11,18.47] },
+  642:{ name:'Romania',           region:'Europe',        capital:[26.10,44.43] },
+  643:{ name:'Russia',            region:'Europe/Asia',   capital:[37.62,55.75] },
+  682:{ name:'Saudi Arabia',      region:'Asia',          capital:[46.68,24.69] },
+  686:{ name:'Senegal',           region:'Africa',        capital:[-17.45,14.73] },
+  705:{ name:'Slovenia',          region:'Europe',        capital:[14.51,46.05] },
+  706:{ name:'Somalia',           region:'Africa',        capital:[45.34,2.05] },
+  710:{ name:'South Africa',      region:'Africa',        capital:[28.22,-25.75] },
+  724:{ name:'Spain',             region:'Europe',        capital:[-3.70,40.42] },
+  729:{ name:'Sudan',             region:'Africa',        capital:[32.53,15.55] },
+  752:{ name:'Sweden',            region:'Europe',        capital:[18.06,59.33] },
+  756:{ name:'Switzerland',       region:'Europe',        capital:[7.45,46.95] },
+  760:{ name:'Syria',             region:'Asia',          capital:[36.31,33.51] },
+  764:{ name:'Thailand',          region:'Asia',          capital:[100.52,13.75] },
+  792:{ name:'Turkey',            region:'Asia/Europe',   capital:[32.87,39.92] },
+  800:{ name:'Uganda',            region:'Africa',        capital:[32.58,0.32] },
+  804:{ name:'Ukraine',           region:'Europe',        capital:[30.52,50.45] },
+  784:{ name:'UAE',               region:'Asia',          capital:[54.37,24.47] },
+  826:{ name:'United Kingdom',    region:'Europe',        capital:[-0.13,51.51] },
+  840:{ name:'United States',     region:'North America', capital:[-77.04,38.91] },
+  858:{ name:'Uruguay',           region:'South America', capital:[-56.17,-34.90] },
+  860:{ name:'Uzbekistan',        region:'Asia',          capital:[69.29,41.30] },
+  862:{ name:'Venezuela',         region:'South America', capital:[-66.92,10.49] },
+  704:{ name:'Vietnam',           region:'Asia',          capital:[105.85,21.03] },
+  887:{ name:'Yemen',             region:'Asia',          capital:[44.21,15.35] },
+  894:{ name:'Zambia',            region:'Africa',        capital:[28.29,-15.41] },
+  716:{ name:'Zimbabwe',          region:'Africa',        capital:[31.05,-17.83] },
+};
+
+// ─────────────────────────────────────────────
+// CONFIG
+// ─────────────────────────────────────────────
+const TOTAL = 5;
+const BASE_CORRECT = 1000;
+const STREAK_BONUS = 200;
+
+let world = null;         // topojson data
+let allCountryIds = [];   // ISO ids available in dataset
+let rounds = [], curr = 0, totalScore = 0;
+let streak = 0, maxStreak = 0;
+let difficulty = 'easy';
+let answered = false;
+let currentId = null;
+let projection, path;
+
+// ─────────────────────────────────────────────
+// INIT
+// ─────────────────────────────────────────────
+window.addEventListener('DOMContentLoaded', async () => {
+  buildPips();
+  await loadWorld();
+  startGame();
+});
+
+async function loadWorld() {
+  const res = await fetch('https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json');
+  world = await res.json();
+  // Get all ISO ids in the dataset
+  const topo = topojson.feature(world, world.objects.countries);
+  allCountryIds = topo.features
+    .map(f => parseInt(f.id))
+    .filter(id => COUNTRIES[id]);
+  document.getElementById('outline-loading').classList.add('hidden');
+}
+
+function buildPips() {
+  const c = document.getElementById('pips'); c.innerHTML = '';
+  for (let i = 0; i < TOTAL; i++) {
+    const p = document.createElement('div'); p.className='pip'+(i===0?' cur':''); p.id=`p${i}`; c.appendChild(p);
+  }
+}
+function syncPips() {
+  for (let i = 0; i < TOTAL; i++) {
+    const p = document.getElementById(`p${i}`);
+    if (p) p.className='pip'+(i<curr?' done':i===curr?' cur':'');
+  }
+}
+function updateHUD() {
+  document.getElementById('hud-score').textContent = totalScore.toLocaleString();
+  document.getElementById('streak-count').textContent = streak;
+  document.getElementById('streak-fire').classList.toggle('show', streak >= 3);
+}
+
+function setDiff(d) {
+  difficulty = d;
+  ['easy','medium','hard'].forEach(x =>
+    document.getElementById(`diff-${x}`).classList.toggle('active', x===d)
+  );
+  startGame();
+}
+
+// ─────────────────────────────────────────────
+// GAME
+// ─────────────────────────────────────────────
+function startGame() {
+  const shuffled = [...allCountryIds].sort(() => Math.random() - .5);
+  rounds = shuffled.slice(0, TOTAL);
+  curr = 0; totalScore = 0; streak = 0; maxStreak = 0;
+  document.getElementById('result-overlay').classList.remove('show');
+  document.getElementById('final-overlay').classList.remove('show');
+  updateHUD(); syncPips();
+  loadRound();
+}
+
+function loadRound() {
+  currentId = rounds[curr];
+  answered = false;
+  document.getElementById('result-overlay').classList.remove('show');
+  document.getElementById('outline-label').textContent = `ROUND ${curr+1} / ${TOTAL}`;
+  syncPips(); updateHUD();
+  drawCountry(currentId, 'outline-svg');
+  buildAnswerUI();
+}
+
+// ─────────────────────────────────────────────
+// DRAWING
+// ─────────────────────────────────────────────
+function drawCountry(id, svgId, small = false) {
+  const svgEl = document.getElementById(svgId);
+  const W = small ? 200 : 400, H = small ? 140 : 260;
+  svgEl.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svgEl.innerHTML = '';
+
+  const topo = topojson.feature(world, world.objects.countries);
+  const feature = topo.features.find(f => parseInt(f.id) === id);
+  if (!feature) return;
+
+  // Fit projection to this country
+  const proj = d3.geoMercator().fitSize([W - 20, H - 20], feature);
+  const pathGen = d3.geoPath().projection(proj);
+
+  const svg = d3.select(`#${svgId}`);
+
+  // Glow filter
+  const defs = svg.append('defs');
+  const filter = defs.append('filter').attr('id', `glow-${svgId}`);
+  filter.append('feGaussianBlur').attr('stdDeviation', small ? 1 : 2).attr('result', 'blur');
+  const merge = filter.append('feMerge');
+  merge.append('feMergeNode').attr('in', 'blur');
+  merge.append('feMergeNode').attr('in', 'SourceGraphic');
+
+  // Draw country shape
+  const g = svg.append('g').attr('transform', `translate(10, 10)`);
+
+  g.append('path')
+    .datum(feature)
+    .attr('d', pathGen)
+    .attr('fill', '#1e3a6e')
+    .attr('stroke', '#4f8ef7')
+    .attr('stroke-width', small ? 1 : 1.5)
+    .attr('filter', `url(#glow-${svgId})`);
+
+  // Capital dot (easy mode only, not in small preview)
+  if (!small && difficulty === 'easy' && COUNTRIES[id]?.capital) {
+    const [lng, lat] = COUNTRIES[id].capital;
+    const [cx, cy] = proj([lng, lat]);
+    if (cx > 0 && cx < W-20 && cy > 0 && cy < H-20) {
+      g.append('circle')
+        .attr('cx', cx).attr('cy', cy).attr('r', 4)
+        .attr('fill', '#fbbf24')
+        .attr('stroke', '#fff').attr('stroke-width', 1.5);
+      document.getElementById('hint-label').textContent = '● capital city shown';
+    } else {
+      document.getElementById('hint-label').textContent = '';
+    }
+  } else {
+    document.getElementById('hint-label').textContent = '';
+  }
+}
+
+// ─────────────────────────────────────────────
+// ANSWER UI
+// ─────────────────────────────────────────────
+function buildAnswerUI() {
+  if (difficulty === 'hard') {
+    document.getElementById('mc-grid').style.display = 'none';
+    document.getElementById('search-mode').style.display = 'flex';
+    document.getElementById('country-search').value = '';
+    buildSearchList(Object.values(COUNTRIES).map(c => c.name).sort());
+  } else {
+    document.getElementById('mc-grid').style.display = 'grid';
+    document.getElementById('search-mode').style.display = 'none';
+    buildMultipleChoice();
+  }
+}
+
+function buildMultipleChoice() {
+  const grid = document.getElementById('mc-grid'); grid.innerHTML = '';
+  const correct = COUNTRIES[currentId].name;
+  const count = difficulty === 'easy' ? 4 : 6;
+
+  // Pick wrong answers from same pool
+  const wrong = Object.values(COUNTRIES)
+    .filter(c => c.name !== correct)
+    .sort(() => Math.random() - .5)
+    .slice(0, count - 1)
+    .map(c => c.name);
+
+  const options = [...wrong, correct].sort(() => Math.random() - .5);
+
+  options.forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'mc-btn';
+    btn.textContent = name;
+    btn.onclick = () => submitGuess(name);
+    grid.appendChild(btn);
+  });
+}
+
+function buildSearchList(names) {
+  const container = document.getElementById('search-results'); container.innerHTML = '';
+  names.slice(0, 30).forEach(name => {
+    const btn = document.createElement('button');
+    btn.className = 'search-btn';
+    btn.textContent = name;
+    btn.onclick = () => submitGuess(name);
+    container.appendChild(btn);
+  });
+}
+
+function filterSearch(q) {
+  const names = Object.values(COUNTRIES).map(c => c.name).sort();
+  const filtered = q ? names.filter(n => n.toLowerCase().includes(q.toLowerCase())) : names;
+  buildSearchList(filtered);
+}
+
+// ─────────────────────────────────────────────
+// GUESS
+// ─────────────────────────────────────────────
+function submitGuess(name) {
+  if (answered) return;
+  answered = true;
+
+  const correct = name === COUNTRIES[currentId].name;
+
+  if (correct) {
+    streak++;
+    maxStreak = Math.max(maxStreak, streak);
+  } else {
+    streak = 0;
+  }
+
+  const streakBonus = correct && streak > 1 ? (streak - 1) * STREAK_BONUS : 0;
+  const pts = correct ? BASE_CORRECT + streakBonus : 0;
+  totalScore += pts;
+
+  // Highlight buttons
+  const allBtns = document.querySelectorAll('.mc-btn, .search-btn');
+  allBtns.forEach(btn => {
+    if (btn.textContent === COUNTRIES[currentId].name) btn.classList.add('correct');
+    else if (btn.textContent === name && !correct) btn.classList.add('wrong');
+    btn.disabled = true;
+  });
+
+  showResult(correct, pts, streakBonus, name);
+}
+
+function showResult(correct, pts, streakBonus, guessed) {
+  const country = COUNTRIES[currentId];
+
+  drawCountry(currentId, 'result-outline', true);
+
+  document.getElementById('r-country').textContent = country.name;
+  document.getElementById('r-region').textContent = country.region;
+
+  const outcome = document.getElementById('r-outcome');
+  outcome.textContent = correct ? '✓ CORRECT' : `✗ ${guessed.toUpperCase()}`;
+  outcome.className = 'r-outcome ' + (correct ? 'correct' : 'wrong');
+
+  document.getElementById('r-score').textContent = pts.toLocaleString();
+
+  const streakEl = document.getElementById('r-streak');
+  if (correct && streak >= 2) {
+    streakEl.textContent = `🔥 ${streak} streak! +${streakBonus} bonus`;
+  } else if (!correct) {
+    streakEl.textContent = streak > 0 ? '' : 'Streak reset';
+  } else {
+    streakEl.textContent = '';
+  }
+
+  document.getElementById('btn-next').textContent = curr >= TOTAL-1 ? '🏆 Final Score' : 'Next Country →';
+  document.getElementById('result-overlay').classList.add('show');
+  updateHUD();
+}
+
+function nextRound() {
+  curr++;
+  if (curr >= TOTAL) { showFinal(); return; }
+  loadRound();
+}
+
+function showFinal() {
+  const max = TOTAL * (BASE_CORRECT + (TOTAL-1) * STREAK_BONUS);
+  document.getElementById('f-score').textContent = totalScore.toLocaleString();
+  document.getElementById('f-max').textContent = `out of ${max.toLocaleString()} possible`;
+  document.getElementById('f-streak').textContent = maxStreak >= 3 ? `🔥 Best streak: ${maxStreak}` : '';
+
+  const pct = totalScore / (TOTAL * BASE_CORRECT);
+  const g = document.getElementById('f-grade');
+  if (pct >= 1)       { g.textContent='🏆 Cartographer';    g.className='f-grade fg-s'; }
+  else if (pct >= .8) { g.textContent='🌍 Geographer';      g.className='f-grade fg-a'; }
+  else if (pct >= .6) { g.textContent='🗺 Explorer';        g.className='f-grade fg-b'; }
+  else                { g.textContent='📍 Tourist';         g.className='f-grade fg-c'; }
+
+  document.getElementById('result-overlay').classList.remove('show');
+  document.getElementById('final-overlay').classList.add('show');
+}
+</script>
+</body>
+</html>
